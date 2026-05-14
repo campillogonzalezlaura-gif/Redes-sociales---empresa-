@@ -1,0 +1,81 @@
+{
+  "entities": {
+    "users": {
+      "title": "User Profile",
+      "description": "User account information and subscription status",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "displayName": { "type": "string" },
+        "plan": { "type": "string", "enum": ["free", "pro", "enterprise"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email"]
+    },
+    "accounts": {
+      "title": "Social Account",
+      "description": "Connected social media accounts and OAuth tokens",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "platform": { "type": "string", "enum": ["instagram", "facebook", "twitter", "linkedin", "tiktok"] },
+        "username": { "type": "string" },
+        "accessToken": { "type": "string" },
+        "refreshToken": { "type": "string" },
+        "expiresAt": { "type": "string", "format": "date-time" },
+        "profileImageUrl": { "type": "string" }
+      },
+      "required": ["userId", "platform", "username"]
+    },
+    "posts": {
+      "title": "Social Post",
+      "description": "Content scheduled or published through the platform",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "content": { "type": "string" },
+        "mediaUrls": { "type": "array", "items": { "type": "string" } },
+        "platforms": { "type": "array", "items": { "type": "string" } },
+        "status": { "type": "string", "enum": ["draft", "scheduled", "publishing", "published", "failed"] },
+        "scheduledAt": { "type": "string", "format": "date-time" },
+        "publishedAt": { "type": "string", "format": "date-time" },
+        "errorMessage": { "type": "string" }
+      },
+      "required": ["userId", "content", "status"]
+    },
+    "metrics": {
+      "title": "Analytics Metric",
+      "description": "Performance data for a specific post or account",
+      "type": "object",
+      "properties": {
+        "postId": { "type": "string" },
+        "platform": { "type": "string" },
+        "likes": { "type": "number" },
+        "shares": { "type": "number" },
+        "comments": { "type": "number" },
+        "reach": { "type": "number" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["platform", "timestamp"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "users",
+      "description": "Primary user profiles"
+    },
+    "/users/{userId}/accounts/{accountId}": {
+      "schema": "accounts",
+      "description": "Users' connected social media channels"
+    },
+    "/users/{userId}/posts/{postId}": {
+      "schema": "posts",
+      "description": "User-generated content and scheduling queue"
+    },
+    "/users/{userId}/posts/{postId}/metrics/{metricId}": {
+      "schema": "metrics",
+      "description": "Historical performance data for individual posts"
+    }
+  }
+}

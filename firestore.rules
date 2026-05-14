@@ -1,0 +1,68 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 0. Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Phase 3: Primitive Definitions
+    function isSignedIn() { return request.auth != null; }
+    function isOwner(userId) { return isSignedIn() && request.auth.uid == userId; }
+    function incoming() { return request.resource.data; }
+    function existing() { return resource.data; }
+    function isValidId(id) { return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); }
+    function isVerified() { return request.auth.token.email_verified == true; }
+
+    // Validation Blueprints
+    function isValidAccount(data) {
+      return data.platform in ["instagram", "facebook", "tiktok", "linkedin", "twitter", "pinterest"] &&
+             data.username is string && data.username.size() <= 100 &&
+             data.status in ["active", "expired", "disconnected"];
+    }
+
+    function isValidPost(data) {
+      return data.contentText is string && data.contentText.size() <= 10000 &&
+             data.status in ["draft", "scheduled", "published", "failed"] &&
+             data.createdAt is timestamp;
+    }
+
+    function isValidMetric(data) {
+      return data.postId is string && data.platform is string &&
+             data.timestamp is timestamp;
+    }
+
+    // User Data Match Blocks
+    match /users/{userId} {
+      allow read, write: if isOwner(userId);
+
+      match /accounts/{accountId} {
+        allow read: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidAccount(incoming()) && isValidId(accountId);
+        allow update: if isOwner(userId) && isValidAccount(incoming()) && 
+                        incoming().diff(existing()).affectedKeys().hasAny(['status', 'accessToken', 'expiresAt', 'displayName', 'profileImageUrl']);
+        allow delete: if isOwner(userId);
+      }
+
+      match /posts/{postId} {
+        allow read: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidPost(incoming()) && isValidId(postId);
+        allow update: if isOwner(userId) && isValidPost(incoming()) && 
+                        (
+                          // Action: Update content
+                          incoming().diff(existing()).affectedKeys().hasOnly(['contentText', 'mediaUrls', 'platforms', 'targetAccountIds', 'scheduledAt', 'status']) ||
+                          // Action: Publish state change
+                          incoming().diff(existing()).affectedKeys().hasOnly(['status', 'publishedAt'])
+                        );
+        allow delete: if isOwner(userId);
+
+        match /metrics/{metricId} {
+          allow read: if isOwner(userId);
+          allow create: if isOwner(userId) && isValidMetric(incoming()) && isValidId(metricId);
+          allow update: if false; // Metrics should be immutable or system updated
+          allow delete: if isOwner(userId);
+        }
+      }
+    }
+  }
+}
