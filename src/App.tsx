@@ -284,7 +284,10 @@ function Dashboard() {
 }
 
 function Login() {
-  const { signIn } = useAuth();
+  const { user, signIn } = useAuth();
+  
+  if (user) return <Navigate to="/" />;
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-[#fcfbf9]">
       <div className="p-16 bg-white shadow-[0_64px_128px_-32px_rgba(0,0,0,0.1)] rounded-[60px] border border-[#e8e4e1] max-w-md w-full text-center relative overflow-hidden group">

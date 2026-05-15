@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   format, 
   startOfMonth, 
@@ -12,7 +12,8 @@ import {
   subMonths,
   addWeeks,
   subWeeks,
-  isSameWeek
+  isSameWeek,
+  parseISO
 } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { 
@@ -31,7 +32,8 @@ import {
   MoreVertical,
   Edit2,
   Trash2,
-  X
+  X,
+  Sparkles
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { 
@@ -45,6 +47,9 @@ import {
 } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
 import { motion, AnimatePresence } from 'motion/react';
+import { useAuth } from '../../contexts/AuthContext';
+import { collection, query, onSnapshot, addDoc, doc, updateDoc, deleteDoc, Timestamp } from 'firebase/firestore';
+import { db } from '../../lib/firebase';
 
 interface Post {
   id: string;
@@ -139,11 +144,20 @@ function DroppableDay({ day, children, isToday, isCurrentMonth }: { day: Date, c
 }
 
 export function ScheduleView() {
+  const { user } = useAuth();
   const [view, setView] = useState<'month' | 'week'>('month');
   const [currentDate, setCurrentDate] = useState(new Date());
-  const [posts, setPosts] = useState<Post[]>(initialPosts);
+  const [posts, setPosts] = useState<Post[]>([]);
   const [activeFilters, setActiveFilters] = useState<string[]>(['instagram', 'twitter', 'linkedin', 'facebook', 'tiktok']);
   const [editingPost, setEditingPost] = useState<Post | null>(null);
+  const [isCreating, setIsCreating] = useState(false);
+  const [newPost, setNewPost] = useState({
+    title: '',
+    content: '',
+    platform: 'instagram' as const,
+    time: '12:00 PM',
+    date: format(new Date(), 'yyyy-MM-dd')
+  });
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -152,6 +166,70 @@ export function ScheduleView() {
       },
     })
   );
+
+  useEffect(() => {
+    if (!user) return;
+    const q = query(collection(db, `users/${user.uid}/posts`));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const fetchedPosts = snapshot.docs.map(doc => {
+        const data = doc.data();
+        return {
+          id: doc.id,
+          ...data,
+          date: data.date instanceof Timestamp ? data.date.toDate() : new Date(data.date)
+        } as Post;
+      });
+      setPosts(fetchedPosts);
+    });
+    return unsubscribe;
+  }, [user]);
+
+  const handleCreateManifestation = async () => {
+    if (!user || !newPost.title) return;
+    try {
+      await addDoc(collection(db, `users/${user.uid}/posts`), {
+        ...newPost,
+        date: Timestamp.fromDate(new Date(newPost.date + 'T12:00:00')),
+        createdAt: Timestamp.now()
+      });
+      setIsCreating(false);
+      setNewPost({
+        title: '',
+        content: '',
+        platform: 'instagram',
+        time: '12:00 PM',
+        date: format(new Date(), 'yyyy-MM-dd')
+      });
+    } catch (error) {
+      console.error("Error creating post:", error);
+    }
+  };
+
+  const handleUpdatePost = async () => {
+    if (!user || !editingPost) return;
+    try {
+      const postRef = doc(db, `users/${user.uid}/posts`, editingPost.id);
+      await updateDoc(postRef, {
+        title: editingPost.title,
+        content: editingPost.content,
+        time: editingPost.time,
+        platform: editingPost.platform
+      });
+      setEditingPost(null);
+    } catch (error) {
+      console.error("Error updating post:", error);
+    }
+  };
+
+  const handleDeletePost = async (id: string) => {
+    if (!user) return;
+    try {
+      await deleteDoc(doc(db, `users/${user.uid}/posts`, id));
+      setEditingPost(null);
+    } catch (error) {
+      console.error("Error deleting post:", error);
+    }
+  };
 
   const monthStart = startOfMonth(currentDate);
   const monthEnd = endOfMonth(monthStart);
@@ -175,13 +253,18 @@ export function ScheduleView() {
     setCurrentDate(view === 'month' ? subMonths(currentDate, 1) : subWeeks(currentDate, 1));
   };
 
-  const handleDragEnd = (event: DragEndEvent) => {
+  const handleDragEnd = async (event: DragEndEvent) => {
     const { active, over } = event;
-    if (over && active.id !== over.id) {
+    if (over && active.id !== over.id && user) {
       const newDate = new Date(over.id as string);
-      setPosts(prev => prev.map(post => 
-        post.id === active.id ? { ...post, date: newDate } : post
-      ));
+      try {
+        const postRef = doc(db, `users/${user.uid}/posts`, active.id as string);
+        await updateDoc(postRef, {
+          date: Timestamp.fromDate(newDate)
+        });
+      } catch (error) {
+        console.error("Error moving post:", error);
+      }
     }
   };
 
@@ -244,7 +327,10 @@ export function ScheduleView() {
               </button>
             </div>
 
-            <button className="h-14 px-10 bg-[#1a1a1a] text-white rounded-full text-[10px] font-bold uppercase tracking-widest hover:bg-black transition-all shadow-2xl shadow-black/20 flex items-center gap-3 active:scale-95">
+            <button 
+              onClick={() => setIsCreating(true)}
+              className="h-14 px-10 bg-[#1a1a1a] text-white rounded-full text-[10px] font-bold uppercase tracking-widest hover:bg-black transition-all shadow-2xl shadow-black/20 flex items-center gap-3 active:scale-95"
+            >
               <Plus className="w-4 h-4" /> Crear Manifestación
             </button>
           </div>
@@ -392,13 +478,134 @@ export function ScheduleView() {
 
                 <div className="mt-10 flex gap-4">
                   <button 
-                    onClick={() => setEditingPost(null)}
+                    onClick={handleUpdatePost}
                     className="flex-1 h-12 bg-gray-900 text-white rounded-2xl text-xs font-bold hover:bg-black transition-all shadow-lg active:scale-95"
                   >
                     Guardar Cambios
                   </button>
-                  <button className="w-12 h-12 bg-red-50 text-red-500 rounded-2xl flex items-center justify-center hover:bg-red-100 transition-colors border border-red-100 shadow-sm active:scale-95">
+                  <button 
+                    onClick={() => handleDeletePost(editingPost.id)}
+                    className="w-12 h-12 bg-red-50 text-red-500 rounded-2xl flex items-center justify-center hover:bg-red-100 transition-colors border border-red-100 shadow-sm active:scale-95"
+                  >
                     <Trash2 className="w-5 h-5" />
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Create Modal */}
+      <AnimatePresence>
+        {isCreating && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsCreating(false)}
+              className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            />
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="relative w-full max-w-lg bg-white rounded-[40px] shadow-2xl overflow-hidden"
+            >
+              <div className="p-10">
+                <div className="flex items-center justify-between mb-8">
+                  <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 bg-[#fcfbf9] rounded-2xl flex items-center justify-center border border-[#e8e4e1]">
+                      <Sparkles className="w-6 h-6 text-[#b49b85]" />
+                    </div>
+                    <div>
+                      <h3 className="text-xl font-bold text-[#111827]">Nueva Manifestación</h3>
+                      <p className="text-xs font-bold text-[#b49b85] uppercase tracking-widest leading-none mt-1">Proyectar esencia digital</p>
+                    </div>
+                  </div>
+                  <button 
+                    onClick={() => setIsCreating(false)}
+                    className="w-10 h-10 rounded-full bg-gray-50 flex items-center justify-center hover:bg-gray-100 transition-colors"
+                  >
+                    <X className="w-4 h-4 text-gray-400" />
+                  </button>
+                </div>
+
+                <div className="space-y-6">
+                  <div>
+                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2 block">Título</label>
+                    <input 
+                      type="text" 
+                      placeholder="Título de la publicación..."
+                      value={newPost.title}
+                      onChange={(e) => setNewPost({...newPost, title: e.target.value})}
+                      className="w-full h-14 px-5 bg-gray-50 border border-gray-100 rounded-2xl focus:ring-1 focus:ring-[#b49b85] outline-none text-sm font-medium"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2 block">Contenido</label>
+                    <textarea 
+                      placeholder="Escriba la narrativa..."
+                      value={newPost.content}
+                      onChange={(e) => setNewPost({...newPost, content: e.target.value})}
+                      rows={4}
+                      className="w-full p-5 bg-gray-50 border border-gray-100 rounded-3xl focus:ring-1 focus:ring-[#b49b85] outline-none text-sm font-medium resize-none"
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2 block">Fecha</label>
+                      <input 
+                        type="date" 
+                        value={newPost.date}
+                        onChange={(e) => setNewPost({...newPost, date: e.target.value})}
+                        className="w-full h-12 px-4 bg-gray-50 border border-gray-100 rounded-2xl outline-none text-xs font-bold"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2 block">Hora de Embocadura</label>
+                      <div className="relative">
+                        <Clock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                        <input 
+                          type="text" 
+                          value={newPost.time}
+                          onChange={(e) => setNewPost({...newPost, time: e.target.value})}
+                          placeholder="10:00 AM"
+                          className="w-full h-12 pl-12 pr-5 bg-gray-50 border border-gray-100 rounded-2xl outline-none text-xs font-bold"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2 block">Canal de Proyección</label>
+                    <div className="grid grid-cols-5 gap-2">
+                       {platforms.map(p => (
+                         <button
+                           key={p.id}
+                           onClick={() => setNewPost({...newPost, platform: p.id as any})}
+                           className={cn(
+                             "h-12 rounded-xl flex items-center justify-center border transition-all",
+                             newPost.platform === p.id 
+                               ? "bg-[#1a1a1a] border-[#1a1a1a] text-white shadow-lg"
+                               : "bg-[#fcfbf9] border-[#e8e4e1] text-[#b49b85] hover:border-[#b49b85]/30 hover:bg-white"
+                           )}
+                           title={p.name}
+                         >
+                           <p.icon className="w-5 h-5" />
+                         </button>
+                       ))}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-10">
+                  <button 
+                    onClick={handleCreateManifestation}
+                    disabled={!newPost.title}
+                    className="w-full h-14 bg-black text-white rounded-full text-[10px] font-black uppercase tracking-[0.2em] hover:bg-gray-900 transition-all shadow-2xl shadow-black/20 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Establecer Manifestación →
                   </button>
                 </div>
               </div>

@@ -18,6 +18,7 @@ export async function generateSocialContent(topic: string, platform: string): Pr
   
   El tono debe ser de ALTA GAMA, ELEGANTE y SOFISTICADO. 
   Evita clichés baratos. Usa un lenguaje evocador, minimalista y premium. 
+  Sé extremadamente conciso. El texto debe ser corto, impactante y directo.
   
   Incluye emojis elegantes y pertinentes que complementen el texto sin saturarlo.
   
@@ -98,6 +99,7 @@ export async function adaptContent(originalContent: string, targetPlatform: stri
   "${originalContent}"
   
   Keep the same core message but optimize the tone and length for the platform. 
+  Make it shorter and more concise.
   Include relevant emojis that match the text.
   Keep the language as the original.`;
 
