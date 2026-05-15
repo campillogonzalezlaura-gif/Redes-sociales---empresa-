@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   BarChart, 
   Bar, 
@@ -15,6 +15,8 @@ import {
   PieChart,
   Pie
 } from 'recharts';
+
+const COLORS = ['#1a1a1a', '#b49b85', '#e8e4e1', '#6b6b6b', '#f5f2ed'];
 import { 
   TrendingUp, 
   Users, 
@@ -31,41 +33,88 @@ import {
   Twitter,
   Linkedin,
   Facebook,
-  Music2
+  Music2,
+  AlertCircle
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
-
-const engagementData = [
-  { name: 'Lun', likes: 2400, comments: 400, shares: 200, reach: 9800 },
-  { name: 'Mar', likes: 1398, comments: 300, shares: 150, reach: 12000 },
-  { name: 'Mie', likes: 9800, comments: 2400, shares: 800, reach: 45000 },
-  { name: 'Jue', likes: 3908, comments: 1200, shares: 400, reach: 22000 },
-  { name: 'Vie', likes: 4800, comments: 1500, shares: 600, reach: 28000 },
-  { name: 'Sab', likes: 3800, comments: 1300, shares: 500, reach: 25000 },
-  { name: 'Dom', likes: 4300, comments: 1800, shares: 700, reach: 31000 },
-];
-
-const growthData = [
-  { month: 'Ene', followers: 45000 },
-  { month: 'Feb', followers: 52000 },
-  { month: 'Mar', followers: 61000 },
-  { month: 'Abr', followers: 68000 },
-  { month: 'May', followers: 82000 },
-  { month: 'Jun', followers: 95000 },
-];
-
-const platformComparison = [
-  { platform: 'Instagram', engagement: 65, reach: 120000, color: '#E1306C', icon: Instagram },
-  { platform: 'Facebook', engagement: 45, reach: 85000, color: '#1877F2', icon: Facebook },
-  { platform: 'Twitter', engagement: 32, reach: 42000, color: '#000000', icon: Twitter },
-  { platform: 'LinkedIn', engagement: 58, reach: 31000, color: '#0A66C2', icon: Linkedin },
-  { platform: 'TikTok', engagement: 84, reach: 250000, color: '#000000', icon: Music2 },
-];
-
-const COLORS = ['#635BFF', '#00D1FF', '#FFB800', '#FF4D4D', '#10B981'];
+import { useAuth } from '../../contexts/AuthContext';
+import { collection, query, onSnapshot } from 'firebase/firestore';
+import { db } from '../../lib/firebase';
+import { Link } from 'react-router-dom';
 
 export function MetricsDashboard() {
+  const { user } = useAuth();
+  const [accounts, setAccounts] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
   const [timeRange, setTimeRange] = useState('7d');
+
+  useEffect(() => {
+    if (!user) return;
+    const q = query(collection(db, `users/${user.uid}/accounts`));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      setAccounts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      setLoading(false);
+    });
+    return unsubscribe;
+  }, [user]);
+
+  const totalReach = accounts.reduce((acc, curr) => acc + (curr.metrics?.reach || 0), 0);
+  const totalFollowers = accounts.reduce((acc, curr) => acc + (curr.metrics?.followers || 0), 0);
+  const avgEngagement = accounts.length > 0 
+    ? (accounts.reduce((acc, curr) => acc + (curr.metrics?.engagement || 0), 0) / accounts.length).toFixed(1)
+    : "0";
+  
+  // Create platform distribution data from real accounts
+  const platformData = accounts.map((acc, index) => ({
+    platform: acc.platform.charAt(0).toUpperCase() + acc.platform.slice(1),
+    engagement: acc.metrics?.engagement || 0,
+    reach: acc.metrics?.reach || 0,
+    followers: acc.metrics?.followers || 0,
+    icon: acc.platform === 'instagram' ? Instagram : 
+          acc.platform === 'facebook' ? Facebook : 
+          acc.platform === 'twitter' ? Twitter : 
+          acc.platform === 'linkedin' ? Linkedin : Music2
+  }));
+
+  // Mock historical data for now based on current stats since we don't have historical metrics collection yet
+  const engagementData = [
+    { name: 'Lun', reach: Math.floor(totalReach * 0.1) },
+    { name: 'Mar', reach: Math.floor(totalReach * 0.12) },
+    { name: 'Mie', reach: Math.floor(totalReach * 0.15) },
+    { name: 'Jue', reach: Math.floor(totalReach * 0.18) },
+    { name: 'Vie', reach: Math.floor(totalReach * 0.2) },
+    { name: 'Sab', reach: Math.floor(totalReach * 0.15) },
+    { name: 'Dom', reach: Math.floor(totalReach * 0.1) },
+  ];
+
+  const growthData = [
+    { month: 'Mar', followers: Math.floor(totalFollowers * 0.8) },
+    { month: 'Abr', followers: Math.floor(totalFollowers * 0.9) },
+    { month: 'May', followers: totalFollowers },
+  ];
+
+  if (!loading && accounts.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[600px] text-center space-y-8 animate-in fade-in zoom-in duration-700">
+        <div className="w-24 h-24 bg-[#fcfbf9] rounded-[32px] border border-[#e8e4e1] flex items-center justify-center relative">
+          <div className="absolute inset-0 rounded-[32px] border-2 border-[#b49b85] animate-ping opacity-10"></div>
+          <AlertCircle className="w-10 h-10 text-[#b49b85]" />
+        </div>
+        <div className="max-w-md">
+          <h2 className="text-4xl font-black serif italic mb-4">Silencio Predictivo</h2>
+          <p className="text-[10px] font-bold text-[#b49b85] uppercase tracking-[0.3em] leading-relaxed">
+            No hay ecos en el espectro. <br/>Vincule sus portales para comenzar a proyectar y medir su influencia.
+          </p>
+        </div>
+        <Link 
+          to="/accounts"
+          className="h-14 px-12 bg-[#1a1a1a] text-white rounded-full text-[10px] font-bold uppercase tracking-widest hover:bg-black transition-all shadow-3xl active:scale-95 flex items-center justify-center"
+        >
+          Sincronizar Portales →
+        </Link>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-12 pb-12 animate-in fade-in slide-in-from-bottom-4 duration-1000">
@@ -73,8 +122,13 @@ export function MetricsDashboard() {
         <div>
           <h1 className="text-4xl font-black serif tracking-tight mb-3">Espectro de Datos</h1>
           <div className="flex items-center gap-3">
-            <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></span>
-            <p className="text-[#b49b85] font-bold uppercase tracking-[0.2em] text-[10px] italic">Convergencia Activa en 5 Portales Digitales</p>
+            <span className={cn(
+              "w-1.5 h-1.5 rounded-full animate-pulse",
+              accounts.length > 0 ? "bg-green-500" : "bg-red-500"
+            )}></span>
+            <p className="text-[#b49b85] font-bold uppercase tracking-[0.2em] text-[10px] italic">
+              Convergencia Activa en {accounts.length} {accounts.length === 1 ? 'Portal Digital' : 'Portales Digitales'}
+            </p>
           </div>
         </div>
         <div className="flex items-center gap-6">
@@ -101,10 +155,10 @@ export function MetricsDashboard() {
       {/* Main KPIs */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
         {[
-          { icon: Eye, label: 'Resonancia Total', value: '452.8K', trend: '+15.2%', isPositive: true, color: 'text-[#b49b85]' },
-          { icon: Heart, label: 'Engagement Áureo', value: '24.5K', trend: '+8.4%', isPositive: true, color: 'text-[#e8e4e1]' },
-          { icon: Users, label: 'Espectadores', value: '95K', trend: '+4.2%', isPositive: true, color: 'text-[#b49b85]' },
-          { icon: MessageSquare, label: 'Intercambios', value: '1,240', trend: '-2.1%', isPositive: false, color: 'text-[#e8e4e1]' },
+          { icon: Eye, label: 'Resonancia Total', value: totalReach > 1000 ? `${(totalReach / 1000).toFixed(1)}k` : totalReach.toString(), trend: '+0%', isPositive: true, color: 'text-[#b49b85]' },
+          { icon: Heart, label: 'Engagement Áureo', value: `${avgEngagement}%`, trend: '+0.4%', isPositive: true, color: 'text-[#e8e4e1]' },
+          { icon: Users, label: 'Espectadores', value: totalFollowers > 1000 ? `${(totalFollowers / 1000).toFixed(1)}k` : totalFollowers.toString(), trend: '+0%', isPositive: true, color: 'text-[#b49b85]' },
+          { icon: MessageSquare, label: 'Intercambios', value: Math.floor(totalReach * 0.05).toString(), trend: '+0%', isPositive: true, color: 'text-[#e8e4e1]' },
         ].map((stat, i) => (
           <div key={i} className="group relative p-10 rounded-[48px] border border-[#e8e4e1] bg-white shadow-2xl shadow-black/[0.02] hover:shadow-black/[0.05] transition-all duration-700">
             <div className={`w-14 h-14 bg-[#fcfbf9] border border-[#e8e4e1] rounded-2xl flex items-center justify-center mb-10 transition-transform group-hover:scale-110 group-hover:rotate-3`}>
@@ -183,19 +237,11 @@ export function MetricsDashboard() {
                 />
                 <Area 
                   type="monotone" 
-                  dataKey="likes" 
+                  dataKey="reach" 
                   stroke="#1a1a1a" 
                   strokeWidth={3} 
                   fillOpacity={1} 
                   fill="url(#colorLikes)" 
-                />
-                <Area 
-                  type="monotone" 
-                  dataKey="comments" 
-                  stroke="#b49b85" 
-                  strokeWidth={3} 
-                  fillOpacity={1} 
-                  fill="url(#colorReach)" 
                 />
               </AreaChart>
             </ResponsiveContainer>
@@ -212,15 +258,15 @@ export function MetricsDashboard() {
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
                   <Pie
-                    data={platformComparison}
+                    data={platformData}
                     cx="50%"
                     cy="50%"
                     innerRadius={70}
                     outerRadius={100}
                     paddingAngle={12}
-                    dataKey="engagement"
+                    dataKey="reach"
                   >
-                    {platformComparison.map((entry, index) => (
+                    {platformData.map((entry, index) => (
                       <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} stroke="none" />
                     ))}
                   </Pie>
@@ -228,19 +274,19 @@ export function MetricsDashboard() {
                 </PieChart>
               </ResponsiveContainer>
               <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                <span className="text-3xl font-black serif italic">95%</span>
+                <span className="text-3xl font-black serif italic">{avgEngagement}%</span>
                 <span className="text-[9px] font-black text-[#b49b85] uppercase tracking-widest mt-1">Eficiencia</span>
               </div>
             </div>
 
             <div className="w-full space-y-6 mt-12 bg-[#fcfbf9] p-8 rounded-[32px] border border-[#e8e4e1]">
-              {platformComparison.map((p, i) => (
+              {platformData.map((p, i) => (
                 <div key={i} className="flex items-center justify-between group">
                   <div className="flex items-center gap-4">
-                    <div className="w-2.5 h-2.5 rounded-full ring-4 ring-transparent group-hover:ring-offset-2 transition-all" style={{ backgroundColor: COLORS[i], ringColor: COLORS[i] + '33' }}></div>
+                    <div className="w-2.5 h-2.5 rounded-full ring-4 ring-transparent group-hover:ring-offset-2 transition-all" style={{ backgroundColor: COLORS[i % COLORS.length] }}></div>
                     <span className="text-[10px] font-black text-[#6b6b6b] group-hover:text-[#1a1a1a] transition-all uppercase tracking-widest">{p.platform}</span>
                   </div>
-                  <span className="text-[10px] font-black text-[#1a1a1a] serif italic">{p.engagement}%</span>
+                  <span className="text-[10px] font-black text-[#1a1a1a] serif italic">{((p.reach / totalReach) * 100).toFixed(0)}%</span>
                 </div>
               ))}
             </div>
@@ -301,7 +347,7 @@ export function MetricsDashboard() {
           </div>
           <div className="h-72 w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={platformComparison}>
+              <BarChart data={platformData}>
                 <CartesianGrid strokeDasharray="10 10" vertical={false} stroke="#e8e4e1" opacity={0.5} />
                 <XAxis 
                   dataKey="platform" 
@@ -320,7 +366,7 @@ export function MetricsDashboard() {
                   radius={[20, 20, 0, 0]} 
                   barSize={32}
                 >
-                  {platformComparison.map((entry, index) => (
+                  {platformData.map((entry, index) => (
                     <Cell key={`cell-${index}`} fill={index % 2 === 0 ? "#1a1a1a" : "#b49b85"} fillOpacity={1} />
                   ))}
                 </Bar>

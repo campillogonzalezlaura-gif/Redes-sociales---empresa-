@@ -1,4 +1,3 @@
-import React, { useState, useRef } from 'react';
 import { 
   Sparkles, 
   Send, 
@@ -18,12 +17,18 @@ import {
   Check,
   Heart,
   MessageSquare,
-  MoreVertical
+  MoreVertical,
+  AlertCircle
 } from 'lucide-react';
 import { generateSocialContent, generateAIVisual, AISuggestion } from '../../services/aiService';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../../lib/utils';
 import { Loader2 } from 'lucide-react';
+import { collection, query, onSnapshot, addDoc } from 'firebase/firestore';
+import { db, handleFirestoreError, OperationType } from '../../lib/firebase';
+import { useAuth } from '../../contexts/AuthContext';
+import React, { useEffect, useState, useRef } from 'react';
+import { Link } from 'react-router-dom';
 
 const platforms = [
   { id: 'instagram', name: 'Instagram', icon: Instagram, color: 'text-pink-600' },
@@ -41,8 +46,26 @@ interface MediaFile {
 }
 
 export function ContentCreator() {
+  const { user } = useAuth();
+  const [accounts, setAccounts] = useState<any[]>([]);
   const [content, setContent] = useState('');
   const [topic, setTopic] = useState('');
+
+  useEffect(() => {
+    if (!user) return;
+    const q = query(collection(db, `users/${user.uid}/accounts`));
+    return onSnapshot(q, (snapshot) => {
+      setAccounts(snapshot.docs.map(doc => doc.data()));
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, `users/${user.uid}/accounts`);
+    });
+  }, [user]);
+
+  const totalReach = accounts.reduce((acc, curr) => acc + (curr.metrics?.reach || 0), 0);
+  const avgEngagement = accounts.length > 0 
+    ? (accounts.reduce((acc, curr) => acc + (curr.metrics?.engagement || 0), 0) / accounts.length).toFixed(1)
+    : "0";
+
   const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>(['instagram']);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isGeneratingImage, setIsGeneratingImage] = useState(false);
@@ -140,19 +163,48 @@ export function ContentCreator() {
   };
 
   const handlePublishNow = async () => {
+    if (!user) return;
     setIsGenerating(true);
-    await new Promise(resolve => setTimeout(resolve, 2000));
-    setIsGenerating(false);
-    setIsSuccess(true);
+    try {
+      await addDoc(collection(db, `users/${user.uid}/posts`), {
+        content,
+        topic,
+        platforms: selectedPlatforms,
+        status: 'published',
+        createdAt: new Date().toISOString(),
+        media: media.map(m => ({ type: m.type, url: m.url }))
+      });
+      setIsSuccess(true);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, `users/${user.uid}/posts`);
+    } finally {
+      setIsGenerating(false);
+    }
   };
 
-  const handleSchedule = () => {
-    if (!scheduleDate || !scheduleTime) {
+  const handleSchedule = async () => {
+    if (!user || !scheduleDate || !scheduleTime) {
       alert('Por favor selecciona fecha y hora');
       return;
     }
-    alert(`Programado para el ${scheduleDate} a las ${scheduleTime}`);
-    setIsScheduling(false);
+    setIsGenerating(true);
+    try {
+      await addDoc(collection(db, `users/${user.uid}/posts`), {
+        content,
+        topic,
+        platforms: selectedPlatforms,
+        status: 'scheduled',
+        scheduledFor: `${scheduleDate}T${scheduleTime}`,
+        createdAt: new Date().toISOString(),
+        media: media.map(m => ({ type: m.type, url: m.url }))
+      });
+      setIsScheduling(false);
+      setIsSuccess(true);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, `users/${user.uid}/posts`);
+    } finally {
+      setIsGenerating(false);
+    }
   };
 
   if (isSuccess) {
@@ -206,10 +258,10 @@ export function ContentCreator() {
               {isGenerating ? (
                 <div className="flex items-center gap-2">
                   <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" />
-                  <span>Curando...</span>
+                  <span>Creando...</span>
                 </div>
               ) : (
-                <><Sparkles className="w-3.5 h-3.5" /> Curar con IA</>
+                <><Sparkles className="w-3.5 h-3.5" /> Crear con IA</>
               )}
             </button>
           </div>
@@ -218,10 +270,19 @@ export function ContentCreator() {
         {/* Master Editor */}
         <section>
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-[10px] font-bold text-[#b49b85] uppercase tracking-[0.2em]">Narrativa Maestra</h2>
+            <div className="flex items-center gap-4">
+              <h2 className="text-[10px] font-bold text-[#b49b85] uppercase tracking-[0.2em]">Narrativa Maestra</h2>
+              <button 
+                onClick={() => setContent('')} 
+                className="flex items-center gap-2 p-2 rounded-xl bg-[#fcfbf9] border border-[#e8e4e1] text-[#b49b85] hover:text-red-500 hover:border-red-100 hover:bg-red-50 transition-all text-[9px] font-black uppercase tracking-widest group"
+                title="Limpiar contenido"
+              >
+                <Trash2 className="w-3.5 h-3.5 group-hover:rotate-12 transition-transform" />
+                Limpiar
+              </button>
+            </div>
             <div className="flex items-center gap-4 text-[10px] font-bold text-[#b49b85]">
                <span className="opacity-50">LETRAS: {content.length}</span>
-               <button onClick={() => setContent('')} className="hover:text-red-500 transition-colors uppercase tracking-widest">Limpiar</button>
             </div>
           </div>
           <div className="relative">
@@ -345,40 +406,62 @@ export function ContentCreator() {
         </div>
 
         {/* Global Action Bar */}
-        <div className="flex flex-wrap items-center bg-white border border-[#e8e4e1] rounded-[40px] px-8 py-6 gap-8 shadow-2xl shadow-black/[0.03]">
-           <div className="flex flex-col min-w-[100px]">
-             <span className="text-[9px] font-bold text-[#b49b85] uppercase tracking-[0.2em] mb-1 whitespace-nowrap">Alcance Distinguido</span>
-             <span className="text-2xl font-black serif tracking-tight">12.4k</span>
-           </div>
-           <div className="flex flex-col min-w-[150px] flex-1">
-             <span className="text-[9px] font-bold text-[#b49b85] uppercase tracking-[0.2em] mb-1">Elegancia Algorítmica</span>
-             <div className="flex items-center space-x-3">
-               <span className="text-2xl font-black serif text-[#b49b85]">98%</span>
-               <div className="flex-1 h-1.5 bg-[#f5f2ed] rounded-full overflow-hidden max-w-[120px]">
-                 <div className="w-[98%] h-full bg-[#1a1a1a] rounded-full"></div>
+        {accounts.length === 0 ? (
+          <div className="bg-[#fcfbf9] border border-[#e8e4e1] border-dashed rounded-[40px] px-8 py-6 flex items-center justify-between group hover:border-[#b49b85]/30 transition-all">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 rounded-2xl bg-white border border-[#e8e4e1] flex items-center justify-center shadow-sm">
+                <AlertCircle className="w-6 h-6 text-[#b49b85]" />
+              </div>
+              <div>
+                <p className="text-[10px] font-black text-[#1a1a1a] uppercase tracking-widest">Sin Portales Sincronizados</p>
+                <p className="text-[9px] font-bold text-[#b49b85] uppercase tracking-widest italic mt-0.5">Vincule sus cuentas para calibrar la Alquimia de Datos</p>
+              </div>
+            </div>
+            <Link 
+              to="/accounts" 
+              className="h-10 px-6 bg-[#1a1a1a] text-white rounded-full text-[9px] font-black uppercase tracking-widest hover:bg-black transition-all flex items-center gap-2"
+            >
+              Vincular Ahora →
+            </Link>
+          </div>
+        ) : (
+          <div className="flex flex-wrap items-center bg-white border border-[#e8e4e1] rounded-[40px] px-8 py-6 gap-8 shadow-2xl shadow-black/[0.03]">
+             <div className="flex flex-col min-w-[100px]">
+               <span className="text-[9px] font-bold text-[#b49b85] uppercase tracking-[0.2em] mb-1 whitespace-nowrap">Alcance Distinguido</span>
+               <span className="text-2xl font-black serif tracking-tight">
+                 {totalReach > 1000 ? `${(totalReach / 1000).toFixed(1)}k` : totalReach.toString()}
+               </span>
+             </div>
+             <div className="flex flex-col min-w-[150px] flex-1">
+               <span className="text-[9px] font-bold text-[#b49b85] uppercase tracking-[0.2em] mb-1">Elegancia Algorítmica</span>
+               <div className="flex items-center space-x-3">
+                 <span className="text-2xl font-black serif text-[#b49b85]">{avgEngagement}%</span>
+                 <div className="flex-1 h-1.5 bg-[#f5f2ed] rounded-full overflow-hidden max-w-[120px]">
+                   <div style={{ width: `${avgEngagement}%` }} className="h-full bg-[#1a1a1a] rounded-full"></div>
+                 </div>
                </div>
              </div>
-           </div>
-           <div className="w-full sm:w-auto ml-auto">
-              {isScheduling ? (
-                <button 
-                  onClick={handleSchedule}
-                  className="w-full sm:w-auto h-14 px-10 bg-[#1a1a1a] text-white rounded-full text-[10px] font-bold uppercase tracking-widest hover:bg-black transition-all shadow-2xl shadow-black/20 active:scale-95 flex items-center justify-center gap-3"
-                >
-                  <CalendarIcon className="w-4 h-4" />
-                  Preservar en el Tiempo
-                </button>
-              ) : (
-                <button 
-                  onClick={handlePublishNow}
-                  className="w-full sm:w-auto h-14 px-10 bg-[#b49b85] text-white rounded-full text-[10px] font-bold uppercase tracking-widest hover:bg-[#a38a74] transition-all shadow-2xl shadow-[#b49b85]/20 active:scale-95 flex items-center justify-center gap-3"
-                >
-                  <Send className="w-4 h-4" />
-                  Manifestar Ahora
-                </button>
-              )}
-           </div>
-        </div>
+             <div className="w-full sm:w-auto ml-auto">
+                {isScheduling ? (
+                  <button 
+                    onClick={handleSchedule}
+                    className="w-full sm:w-auto h-14 px-10 bg-[#1a1a1a] text-white rounded-full text-[10px] font-bold uppercase tracking-widest hover:bg-black transition-all shadow-2xl shadow-black/20 active:scale-95 flex items-center justify-center gap-3"
+                  >
+                    <CalendarIcon className="w-4 h-4" />
+                    Preservar en el Tiempo
+                  </button>
+                ) : (
+                  <button 
+                    onClick={handlePublishNow}
+                    className="w-full sm:w-auto h-14 px-10 bg-[#b49b85] text-white rounded-full text-[10px] font-bold uppercase tracking-widest hover:bg-[#a38a74] transition-all shadow-2xl shadow-[#b49b85]/20 active:scale-95 flex items-center justify-center gap-3"
+                  >
+                    <Send className="w-4 h-4" />
+                    Manifestar Ahora
+                  </button>
+                )}
+             </div>
+          </div>
+        )}
 
       </div>
 

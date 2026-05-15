@@ -1,6 +1,7 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, Link } from 'react-router-dom';
 import { BarChart3, Share2, Sparkles, Image as ImageIcon } from 'lucide-react';
+import { collection, query, onSnapshot, addDoc } from 'firebase/firestore';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { Layout } from './components/Layout/Sidebar';
 import { ContentCreator } from './components/Composer/ContentCreator';
@@ -8,10 +9,80 @@ import { AccountManager } from './components/Accounts/AccountManager';
 import { MetricsDashboard } from './components/Analytics/MetricsDashboard';
 import { ScheduleView } from './components/Calendar/ScheduleView';
 import { cn } from './lib/utils';
-import { motion } from 'motion/react';
+import { db } from './lib/firebase';
+import { motion, AnimatePresence } from 'motion/react';
+import { useState, useEffect } from 'react';
 
 // Page Components
 function Dashboard() {
+  const { user } = useAuth();
+  const [accounts, setAccounts] = useState<any[]>([]);
+  const [postsCount, setPostsCount] = useState(0);
+  const [campaigns, setCampaigns] = useState<any[]>([]);
+  const [isCreatingCampaign, setIsCreatingCampaign] = useState(false);
+  const [newCampaignName, setNewCampaignName] = useState('');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+
+  useEffect(() => {
+    if (!user) return;
+    
+    // Accounts subscription
+    const qAcc = query(collection(db, `users/${user.uid}/accounts`));
+    const unsubAcc = onSnapshot(qAcc, (snapshot) => {
+      setAccounts(snapshot.docs.map(doc => doc.data()));
+    });
+
+    // Posts subscription
+    const qPosts = query(collection(db, `users/${user.uid}/posts`));
+    const unsubPosts = onSnapshot(qPosts, (snapshot) => {
+      setPostsCount(snapshot.size);
+    });
+
+    // Campaigns subscription
+    const qCampaigns = query(collection(db, `users/${user.uid}/campaigns`));
+    const unsubCampaigns = onSnapshot(qCampaigns, (snapshot) => {
+      setCampaigns(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    });
+
+    return () => {
+      unsubAcc();
+      unsubPosts();
+      unsubCampaigns();
+    };
+  }, [user]);
+
+  const handleCreateCampaign = async () => {
+    if (!newCampaignName.trim() || !startDate || !endDate || !user) return;
+    try {
+      await addDoc(collection(db, `users/${user.uid}/campaigns`), {
+        name: newCampaignName,
+        startDate,
+        endDate,
+        status: 'active',
+        createdAt: new Date().toISOString(),
+        projections: 0
+      });
+      setNewCampaignName('');
+      setStartDate('');
+      setEndDate('');
+      setIsCreatingCampaign(false);
+    } catch (error) {
+      console.error("Error creating campaign:", error);
+    }
+  };
+
+  const totalReach = accounts.reduce((acc, curr) => acc + (curr.metrics?.reach || 0), 0);
+  const avgEngagement = accounts.length > 0 
+    ? (accounts.reduce((acc, curr) => acc + (curr.metrics?.engagement || 0), 0) / accounts.length).toFixed(1)
+    : "0";
+
+  const stats = [
+    { label: 'Alcance Combinado', value: totalReach > 1000 ? `${(totalReach / 1000).toFixed(1)}k` : totalReach.toString(), trend: '+0%', icon: BarChart3 },
+    { label: 'Portales conectados', value: accounts.length.toString(), trend: '0%', icon: Share2 },
+    { label: 'Manifestaciones', value: postsCount.toString(), trend: '0%', icon: Sparkles },
+  ];
+
   return (
     <div className="space-y-12 animate-in fade-in slide-in-from-bottom-4 duration-1000">
       <div className="flex items-end justify-between">
@@ -27,11 +98,7 @@ function Dashboard() {
       </div>
       
       <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-        {[
-          { label: 'Emanaciones este mes', value: '24', trend: '+12%', icon: BarChart3 },
-          { label: 'Portales conectados', value: '6', trend: '0%', icon: Share2 },
-          { label: 'Engagement Áureo', value: '4.2k', trend: '+18%', icon: Sparkles },
-        ].map((stat, i) => (
+        {stats.map((stat, i) => (
           <div key={i} className="p-8 rounded-[32px] border border-[#e8e4e1] bg-white shadow-2xl shadow-black/[0.02] hover:shadow-black/[0.05] transition-all cursor-default group overflow-hidden relative">
             <div className="flex items-center justify-between mb-6 relative z-10">
               <span className="text-[10px] font-bold text-[#b49b85] uppercase tracking-[0.2em]">{stat.label}</span>
@@ -51,30 +118,145 @@ function Dashboard() {
         ))}
       </div>
 
+      {accounts.length === 0 && (
+        <div className="p-12 rounded-[48px] border-2 border-dashed border-[#e8e4e1] bg-[#fcfbf9]/50 flex flex-col items-center text-center space-y-6 animate-in zoom-in duration-700">
+          <div className="w-20 h-20 bg-white rounded-3xl border border-[#e8e4e1] flex items-center justify-center shadow-xl">
+             <Share2 className="w-10 h-10 text-[#b49b85] animate-pulse" />
+          </div>
+          <div>
+            <h3 className="text-2xl font-black serif italic tracking-tight text-[#1a1a1a] mb-2">Umbral de Sincronización</h3>
+            <p className="text-[10px] font-bold text-[#b49b85] uppercase tracking-widest max-w-sm mx-auto leading-relaxed">
+              Para revelar las emanaciones de su marca y calibrar los ecos sociales, primero debe establecer contacto con sus portales digitales.
+            </p>
+          </div>
+          <Link 
+            to="/accounts" 
+            className="h-14 px-12 bg-[#1a1a1a] text-white rounded-full text-[10px] font-black uppercase tracking-[0.2em] hover:bg-black transition-all shadow-3xl shadow-black/10 active:scale-95 flex items-center gap-3"
+          >
+            Vincular Cuentas Ahora →
+          </Link>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
         <section className="p-10 border border-[#e8e4e1] rounded-[48px] bg-white shadow-2xl shadow-black/[0.02]">
           <div className="flex items-center justify-between mb-10">
-            <h3 className="font-black text-xl serif italic">Próximas Manifestaciones</h3>
-            <Link to="/calendar" className="text-[10px] font-black uppercase tracking-widest text-[#b49b85] hover:text-[#1a1a1a] transition-all group flex items-center gap-2">
-              Ver Calendario <span className="group-hover:translate-x-1 transition-transform">→</span>
-            </Link>
+            <h3 className="font-black text-xl serif italic">Campañas en Curso</h3>
+            <button 
+              onClick={() => setIsCreatingCampaign(true)}
+              className="text-[10px] font-black uppercase tracking-widest text-[#b49b85] hover:text-[#1a1a1a] transition-all group flex items-center gap-2"
+            >
+              Nueva Campaña <Sparkles className="w-4 h-4 group-hover:rotate-12 transition-transform" />
+            </button>
           </div>
+
+          <AnimatePresence>
+            {isCreatingCampaign && (
+              <motion.div 
+                initial={{ opacity: 0, y: -20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -20 }}
+                className="mb-8 p-6 bg-[#fcfbf9] rounded-3xl border border-[#e8e4e1] space-y-4"
+              >
+                <input 
+                  autoFocus
+                  placeholder="Nombre de la Campaña..."
+                  value={newCampaignName}
+                  onChange={(e) => setNewCampaignName(e.target.value)}
+                  className="w-full bg-white border border-[#e8e4e1] rounded-2xl h-12 px-5 text-[10px] font-bold uppercase tracking-widest outline-none focus:border-[#b49b85] transition-all"
+                />
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="text-[9px] font-black uppercase tracking-widest text-[#b49b85] ml-2">Inicio</label>
+                    <input 
+                      type="date"
+                      value={startDate}
+                      onChange={(e) => setStartDate(e.target.value)}
+                      className="w-full bg-white border border-[#e8e4e1] rounded-2xl h-10 px-4 text-[10px] font-bold uppercase tracking-widest outline-none focus:border-[#b49b85] transition-all"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[9px] font-black uppercase tracking-widest text-[#b49b85] ml-2">Final</label>
+                    <input 
+                      type="date"
+                      value={endDate}
+                      onChange={(e) => setEndDate(e.target.value)}
+                      className="w-full bg-white border border-[#e8e4e1] rounded-2xl h-10 px-4 text-[10px] font-bold uppercase tracking-widest outline-none focus:border-[#b49b85] transition-all"
+                    />
+                  </div>
+                </div>
+                <div className="flex gap-3">
+                  <button 
+                    onClick={handleCreateCampaign}
+                    className="flex-1 h-10 bg-[#1a1a1a] text-white rounded-full text-[9px] font-black uppercase tracking-widest hover:bg-black transition-all"
+                  >
+                    Establecer Protocolo
+                  </button>
+                  <button 
+                    onClick={() => setIsCreatingCampaign(false)}
+                    className="px-6 h-10 border border-[#e8e4e1] text-[#6b6b6b] rounded-full text-[9px] font-black uppercase tracking-widest hover:bg-gray-50 transition-all"
+                  >
+                    Anular
+                  </button>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
           <div className="space-y-6">
-            {[1, 2, 3].map((i) => (
-              <div key={i} className="flex items-center gap-6 p-5 hover:bg-[#fcfbf9] rounded-[24px] border border-transparent hover:border-[#e8e4e1] transition-all cursor-pointer group">
-                <div className="w-14 h-14 bg-[#fcfbf9] rounded-2xl flex items-center justify-center border border-[#e8e4e1] group-hover:bg-white transition-all">
-                   <ImageIcon className="w-6 h-6 text-[#b49b85] opacity-50 group-hover:opacity-100 transition-opacity" />
+            {campaigns.length === 0 ? (
+              <div className="py-12 text-center space-y-8 animate-in fade-in zoom-in duration-700">
+                <div className="opacity-40 space-y-4">
+                  <BarChart3 className="w-12 h-12 mx-auto stroke-[0.5px]" />
+                  <p className="text-[10px] font-bold uppercase tracking-widest">No hay campañas activas en este ciclo</p>
                 </div>
-                <div className="flex-1">
-                  <p className="font-bold text-sm tracking-tight text-[#1a1a1a]">Campaña de Verano — Revelación {i}</p>
-                  <p className="text-[10px] font-bold text-[#b49b85] uppercase tracking-widest mt-1 italic">Mañana • {10 + i}:00 AM</p>
-                </div>
-                <div className="flex -space-x-2">
-                  <div className="w-7 h-7 rounded-full bg-blue-600 border-2 border-white shadow-xl" />
-                  <div className="w-7 h-7 rounded-full bg-pink-600 border-2 border-white shadow-xl" />
-                </div>
+                {!isCreatingCampaign && (
+                  <button 
+                    onClick={() => setIsCreatingCampaign(true)}
+                    className="mx-auto h-12 px-8 bg-[#b49b85] text-white rounded-full text-[10px] font-black uppercase tracking-widest hover:bg-[#a38a74] transition-all shadow-xl shadow-[#b49b85]/20 flex items-center gap-3 active:scale-95"
+                  >
+                    Crear campaña <Sparkles className="w-4 h-4" />
+                  </button>
+                )}
               </div>
-            ))}
+            ) : (
+              <div className="space-y-4">
+                {campaigns.map((campaign) => (
+                  <div key={campaign.id} className="flex items-center gap-6 p-5 hover:bg-[#fcfbf9] rounded-[24px] border border-transparent hover:border-[#e8e4e1] transition-all cursor-pointer group">
+                    <div className="w-14 h-14 bg-[#fcfbf9] rounded-2xl flex items-center justify-center border border-[#e8e4e1] group-hover:bg-white transition-all">
+                       <ImageIcon className="w-6 h-6 text-[#b49b85] opacity-50 group-hover:opacity-100 transition-opacity" />
+                    </div>
+                    <div className="flex-1">
+                      <p className="font-bold text-sm tracking-tight text-[#1a1a1a]">{campaign.name}</p>
+                      <div className="flex items-center gap-2 mt-1">
+                        <p className="text-[10px] font-bold text-[#b49b85] uppercase tracking-widest italic">
+                          {campaign.status === 'active' ? 'En Progreso' : 'Finalizada'} • {campaign.projections || 0} Emanaciones
+                        </p>
+                        {campaign.startDate && campaign.endDate && (
+                          <>
+                            <span className="text-[#e8e4e1]">•</span>
+                            <p className="text-[9px] font-black text-[#6b6b6b] uppercase tracking-tighter">
+                              {campaign.startDate} — {campaign.endDate}
+                            </p>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                    <div className="text-[10px] font-black text-[#1a1a1a] serif italic">
+                      98%
+                    </div>
+                  </div>
+                ))}
+                {!isCreatingCampaign && (
+                  <button 
+                    onClick={() => setIsCreatingCampaign(true)}
+                    className="w-full mt-4 h-12 border-2 border-dashed border-[#e8e4e1] rounded-2xl text-[9px] font-black uppercase tracking-widest text-[#b49b85] hover:border-[#b49b85]/30 hover:text-[#1a1a1a] transition-all flex items-center justify-center gap-2"
+                  >
+                    + Agregar nueva campaña
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         </section>
 

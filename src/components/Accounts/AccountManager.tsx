@@ -65,6 +65,10 @@ export function AccountManager() {
   const completeConnection = async (platform: string, code: string) => {
     if (!user) return;
     try {
+      // Simulate fetching followers/reach from the newly connected account
+      const mockReach = Math.floor(Math.random() * 5000) + 1000;
+      const mockEngagement = Math.floor(Math.random() * 5) + 2; // 2-7%
+      
       await addDoc(collection(db, `users/${user.uid}/accounts`), {
         platform,
         username: `${user.displayName?.toLowerCase().replace(' ', '_')}_${platform}`,
@@ -73,6 +77,11 @@ export function AccountManager() {
         status: 'active',
         connectedAt: new Date().toISOString(),
         authCode: code,
+        metrics: {
+          followers: mockReach,
+          reach: mockReach * 2,
+          engagement: mockEngagement,
+        }
       });
     } catch (error) {
       handleFirestoreError(error, OperationType.WRITE, `users/${user.uid}/accounts`);

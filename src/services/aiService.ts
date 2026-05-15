@@ -19,6 +19,8 @@ export async function generateSocialContent(topic: string, platform: string): Pr
   El tono debe ser de ALTA GAMA, ELEGANTE y SOFISTICADO. 
   Evita clichés baratos. Usa un lenguaje evocador, minimalista y premium. 
   
+  Incluye emojis elegantes y pertinentes que complementen el texto sin saturarlo.
+  
   Proporciona un título elegante, el copy principal y una lista de 5 hashtags exclusivos. 
   Genera todo el contenido en español.`;
 
@@ -95,7 +97,9 @@ export async function adaptContent(originalContent: string, targetPlatform: stri
   
   "${originalContent}"
   
-  Keep the same core message but optimize the tone and length for the platform. Keep the language as the original.`;
+  Keep the same core message but optimize the tone and length for the platform. 
+  Include relevant emojis that match the text.
+  Keep the language as the original.`;
 
   const response = await ai.models.generateContent({
     model: "gemini-3-flash-preview",
