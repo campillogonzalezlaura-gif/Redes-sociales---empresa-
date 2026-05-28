@@ -1,11 +1,10 @@
 import React from 'react';
-import { LogOut } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { motion } from 'motion/react';
 import { cn } from '../../lib/utils';
 
 export function Layout({ children }: { children: React.ReactNode }) {
-  const { logout, user } = useAuth();
+  const { user } = useAuth();
 
   return (
     <div className="flex flex-col h-screen w-full bg-[#fcfbf9] text-[#1a1a1a] font-sans overflow-hidden">
@@ -17,9 +16,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
           <p className="text-[9px] font-bold text-[#b49b85] uppercase tracking-[0.4em] leading-none mt-1">Social Protocol</p>
         </div>
 
-        {/* Perfil y Cierre de Sesión a la derecha */}
+        {/* Perfil a la derecha */}
         <div className="flex items-center space-x-6">
-          <div className="flex items-center space-x-3 border-r border-[#e8e4e1] pr-6">
+          <div className="flex items-center space-x-3">
             {user?.photoURL ? (
               <img src={user.photoURL} alt="Avatar" className="w-9 h-9 rounded-full border border-[#e8e4e1] shadow-sm" />
             ) : (
@@ -32,14 +31,6 @@ export function Layout({ children }: { children: React.ReactNode }) {
               <p className="text-[9px] text-[#b49b85] font-black uppercase tracking-widest leading-none mt-0.5">Plan Prestige</p>
             </div>
           </div>
-
-          <button
-            onClick={() => logout()}
-            className="flex items-center space-x-2 px-4 py-2 text-[9px] font-black text-[#6b6b6b] hover:text-red-600 hover:bg-red-50 rounded-full border border-transparent hover:border-red-100 transition-all uppercase tracking-widest"
-          >
-            <LogOut className="w-3.5 h-3.5 opacity-70" />
-            <span>Cerrar sesión</span>
-          </button>
         </div>
       </header>
 

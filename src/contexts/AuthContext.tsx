@@ -1,6 +1,24 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { onAuthStateChanged, User, signInWithPopup, GoogleAuthProvider, signOut } from 'firebase/auth';
+import { onAuthStateChanged, User, signInWithPopup, GoogleAuthProvider, signOut, signInAnonymously } from 'firebase/auth';
 import { auth } from '../lib/firebase';
+
+const MOCK_GUEST_USER: User = {
+  uid: 'guest-user',
+  email: 'guest@dermaestetic.com',
+  displayName: 'Invitado Prestige',
+  photoURL: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80',
+  emailVerified: true,
+  isAnonymous: true,
+  metadata: {},
+  providerData: [],
+  refreshToken: '',
+  tenantId: null,
+  delete: async () => {},
+  getIdToken: async () => '',
+  getIdTokenResult: async () => ({} as any),
+  reload: async () => {},
+  toJSON: () => ({}),
+} as any;
 
 interface AuthContextType {
   user: User | null;
@@ -16,11 +34,37 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      setUser(user);
-      setLoading(false);
+    let active = true;
+    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+      if (!active) return;
+      
+      if (currentUser) {
+        // Enhance anonymous user with a nice placeholder name/photo
+        const enhancedUser = {
+          ...currentUser,
+          displayName: currentUser.displayName || 'Invitado Prestige',
+          photoURL: currentUser.photoURL || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80'
+        } as User;
+        setUser(enhancedUser);
+        setLoading(false);
+      } else {
+        // Attempt clean silent anonymous login
+        try {
+          await signInAnonymously(auth);
+        } catch (error) {
+          console.warn("Silent anonymous authentication is not enabled or failed. Falling back to Mock Guest session.", error);
+          if (active) {
+            setUser(MOCK_GUEST_USER);
+            setLoading(false);
+          }
+        }
+      }
     });
-    return unsubscribe;
+
+    return () => {
+      active = false;
+      unsubscribe();
+    };
   }, []);
 
   const signIn = async () => {
@@ -29,7 +73,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const logout = async () => {
-    await signOut(auth);
+    try {
+      await signOut(auth);
+    } catch (e) {
+      console.error(e);
+    }
+    // Set to mock guest instead of logging out completely to prevent showing login wall
+    setUser(MOCK_GUEST_USER);
   };
 
   return (
@@ -46,3 +96,4 @@ export function useAuth() {
   }
   return context;
 }
+
