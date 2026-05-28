@@ -2,5 +2,5 @@
   "name": "OmniSocial",
   "description": "Multi-platform social media manager with AI-powered content generation, scheduling, and analytics.",
   "requestFramePermissions": [],
-  "majorCapabilities": []
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

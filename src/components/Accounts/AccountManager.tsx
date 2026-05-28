@@ -10,9 +10,14 @@ import {
   AlertCircle,
   ExternalLink,
   MoreVertical,
-  Trash2,
-  Gamepad2 as Pinterest
+  Trash2
 } from 'lucide-react';
+
+const PinterestLogo = ({ className }: { className?: string }) => (
+  <span className={cn("font-serif font-black italic select-none leading-none", className, "flex items-center justify-center")}>
+    <span className={className?.includes('w-8') ? 'text-4xl' : 'text-2xl'}>P</span>
+  </span>
+);
 import { collection, query, onSnapshot, addDoc, deleteDoc, doc, Timestamp } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../../lib/firebase';
 import { useAuth } from '../../contexts/AuthContext';
@@ -25,13 +30,15 @@ const platforms = [
   { id: 'linkedin', name: 'LinkedIn', icon: Linkedin, color: 'bg-blue-700' },
   { id: 'twitter', name: 'Twitter/X', icon: TwitterIcon, color: 'bg-black' },
   { id: 'tiktok', name: 'TikTok', icon: Music2, color: 'bg-black' },
-  { id: 'pinterest', name: 'Pinterest', icon: Pinterest, color: 'bg-red-600' },
+  { id: 'pinterest', name: 'Pinterest', icon: PinterestLogo, color: 'bg-red-600' },
 ];
 
 export function AccountManager() {
   const { user } = useAuth();
   const [accounts, setAccounts] = useState<any[]>([]);
   const [isConnecting, setIsConnecting] = useState<string | null>(null);
+  const [manualInputPlatform, setManualInputPlatform] = useState<any | null>(null);
+  const [manualUsername, setManualUsername] = useState('');
 
   useEffect(() => {
     if (!user) return;
@@ -62,7 +69,7 @@ export function AccountManager() {
     return () => window.removeEventListener('message', handleMessage);
   }, [user]);
 
-  const completeConnection = async (platform: string, code: string) => {
+  const completeConnection = async (platform: string, username?: string) => {
     if (!user) return;
     try {
       // Simulate fetching followers/reach from the newly connected account
@@ -71,18 +78,20 @@ export function AccountManager() {
       
       await addDoc(collection(db, `users/${user.uid}/accounts`), {
         platform,
-        username: `${user.displayName?.toLowerCase().replace(' ', '_')}_${platform}`,
+        username: username || `${user.displayName?.toLowerCase().replace(' ', '_')}_${platform}`,
         displayName: user.displayName,
         profileImageUrl: user.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${platform}`,
         status: 'active',
         connectedAt: new Date().toISOString(),
-        authCode: code,
+        authCode: 'manual',
         metrics: {
           followers: mockReach,
           reach: mockReach * 2,
           engagement: mockEngagement,
         }
       });
+      setManualInputPlatform(null);
+      setManualUsername('');
     } catch (error) {
       handleFirestoreError(error, OperationType.WRITE, `users/${user.uid}/accounts`);
     } finally {
@@ -90,34 +99,9 @@ export function AccountManager() {
     }
   };
 
-  const connectAccount = async (platform: string) => {
+  const connectAccount = async (platform: any) => {
     if (!user) return;
-    setIsConnecting(platform);
-    
-    try {
-      const response = await fetch(`/api/auth/${platform}`);
-      if (!response.ok) throw new Error('Error al obtener URL de autenticación');
-      const data = await response.json();
-
-      const width = 600;
-      const height = 700;
-      const left = window.innerWidth / 2 - width / 2;
-      const top = window.innerHeight / 2 - height / 2;
-
-      const authWindow = window.open(
-        data.url,
-        'oauth_popup',
-        `width=${width},height=${height},top=${top},left=${left}`
-      );
-
-      if (!authWindow) {
-        alert('Por favor, permite los popups para conectar tu cuenta.');
-        setIsConnecting(null);
-      }
-    } catch (error) {
-      console.error(error);
-      setIsConnecting(null);
-    }
+    setManualInputPlatform(platform);
   };
 
   const disconnectAccount = async (accountId: string) => {
@@ -153,6 +137,7 @@ export function AccountManager() {
             >
               <div className="flex items-start justify-between mb-10">
                 <div className={cn("w-16 h-16 rounded-3xl flex items-center justify-center text-white shadow-2xl relative z-10", platform.color)}>
+                   {/* @ts-ignore */}
                   <platform.icon className="w-8 h-8" />
                 </div>
                 {connected && (
@@ -184,7 +169,7 @@ export function AccountManager() {
                   </p>
                 </div>
               ) : (
-                <p className="text-[11px] text-[#6b6b6b] mb-10 leading-relaxed font-bold uppercase tracking-widest italic opacity-60">Sincroniza tu portal de {platform.name} para trascender el contenido analógico.</p>
+                <p className="text-[11px] text-[#6b6b6b] mb-10 leading-relaxed font-bold uppercase tracking-widest italic opacity-60">Establece tu portal de {platform.name} para trascender el contenido analógico.</p>
               )}
 
               <div className="mt-10">
@@ -194,14 +179,14 @@ export function AccountManager() {
                   </button>
                 ) : (
                   <button 
-                    onClick={() => connectAccount(platform.id)}
+                    onClick={() => connectAccount(platform)}
                     disabled={!!isConnecting}
                     className="w-full h-14 bg-[#1a1a1a] text-white rounded-full text-[10px] font-bold uppercase tracking-[0.2em] hover:bg-black transition-all flex items-center justify-center gap-3 active:scale-95 shadow-3xl shadow-black/10"
                   >
                     {connecting ? (
                       <div className="w-5 h-5 border-2 border-white/20 border-t-white rounded-full animate-spin" />
                     ) : (
-                      <><Plus className="w-4 h-4 text-[#b49b85]" /> Sincronizar Portal</>
+                      <><Plus className="w-4 h-4 text-[#b49b85]" /> Conectar ID</>
                     )}
                   </button>
                 )}
@@ -210,6 +195,71 @@ export function AccountManager() {
           );
         })}
       </div>
+
+      <AnimatePresence>
+        {manualInputPlatform && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setManualInputPlatform(null)}
+              className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            />
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="relative w-full max-w-sm bg-white rounded-[40px] shadow-2xl overflow-hidden"
+            >
+              <div className="p-10">
+                <div className="flex items-center gap-4 mb-8">
+                  <div className={cn("w-12 h-12 rounded-2xl flex items-center justify-center text-white", manualInputPlatform.color)}>
+                    <manualInputPlatform.icon className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-bold text-[#111827]">{manualInputPlatform.name}</h3>
+                    <p className="text-[10px] font-bold text-[#b49b85] uppercase tracking-widest leading-none mt-1">Identidad Digital</p>
+                  </div>
+                </div>
+
+                <div className="space-y-6">
+                  <div>
+                    <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-2 block ml-2">ID de Usuario / Username</label>
+                    <div className="relative">
+                      <span className="absolute left-5 top-1/2 -translate-y-1/2 text-gray-400 font-bold">@</span>
+                      <input 
+                        autoFocus
+                        type="text" 
+                        placeholder="tu_cuenta"
+                        value={manualUsername}
+                        onChange={(e) => setManualUsername(e.target.value)}
+                        className="w-full h-14 pl-10 pr-5 bg-[#fcfbf9] border border-[#e8e4e1] rounded-2xl text-[10px] font-bold uppercase tracking-widest outline-none focus:border-[#b49b85] transition-all"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-10 flex gap-4">
+                  <button 
+                    onClick={() => setManualInputPlatform(null)}
+                    className="flex-1 h-12 border border-[#e8e4e1] rounded-full text-[9px] font-black uppercase tracking-widest text-[#6b6b6b] hover:bg-gray-50 transition-all"
+                  >
+                    Cerrar
+                  </button>
+                  <button 
+                    onClick={() => completeConnection(manualInputPlatform.id, manualUsername)}
+                    disabled={!manualUsername}
+                    className="flex-[2] h-12 bg-[#1a1a1a] text-white rounded-full text-[9px] font-black uppercase tracking-widest hover:bg-black transition-all shadow-xl shadow-black/10 disabled:opacity-50"
+                  >
+                    Vincular Portal →
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
