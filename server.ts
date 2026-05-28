@@ -1,6 +1,5 @@
 import express from "express";
 import path from "path";
-import { createServer as createViteServer } from "vite";
 import queryString from "query-string";
 import axios from "axios";
 import dotenv from "dotenv";
@@ -71,14 +70,13 @@ const OAUTH_CONFIGS: Record<string, any> = {
   }
 };
 
-async function startServer() {
-  const app = express();
-  const PORT = 3000;
+const app = express();
+const PORT = Number(process.env.PORT) || 3000;
 
-  app.use(express.json());
+app.use(express.json());
 
-  // 1. Get Auth URL for a platform
-  app.get("/api/auth/:platform", (req, res) => {
+// 1. Get Auth URL for a platform
+app.get("/api/auth/:platform", (req, res) => {
     const { platform } = req.params;
     const config = OAUTH_CONFIGS[platform];
 
@@ -323,11 +321,16 @@ async function startServer() {
 
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: "spa",
+    import("vite").then(({ createServer: createViteServer }) => {
+      createViteServer({
+        server: { middlewareMode: true },
+        appType: "spa",
+      }).then((vite) => {
+        app.use(vite.middlewares);
+      });
+    }).catch((err) => {
+      console.error("No se pudo iniciar el middleware de desarrollo de Vite:", err);
     });
-    app.use(vite.middlewares);
   } else {
     const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));
@@ -336,9 +339,11 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server running on http://localhost:${PORT}`);
-  });
-}
+  // Solo levantamos el servidor si no estamos en Vercel Serverless
+  if (!process.env.VERCEL) {
+    app.listen(PORT, "0.0.0.0", () => {
+      console.log(`Server running on http://localhost:${PORT}`);
+    });
+  }
 
-startServer();
+  export default app;
